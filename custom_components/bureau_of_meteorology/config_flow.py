@@ -28,6 +28,19 @@ from .PyBoM.collector import Collector
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_home_zone_coords(hass: HomeAssistant):
+    """Get the current latitude and longitude from the home zone."""
+    home_zone = hass.states.get("zone.home")
+    if home_zone is not None:
+        lat = home_zone.attributes.get("latitude")
+        lon = home_zone.attributes.get("longitude")
+        if lat is not None and lon is not None:
+            return lat, lon
+    # Fall back to HA core config if zone.home is unavailable
+    _LOGGER.warning("BOM: zone.home not available, falling back to HA core location")
+    return hass.config.latitude, hass.config.longitude
+
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for BOM."""
 
@@ -43,45 +56,37 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
-        data_schema = vol.Schema(
-            {
-                vol.Required(CONF_LATITUDE, default=self.hass.config.latitude): float,
-                vol.Required(CONF_LONGITUDE, default=self.hass.config.longitude): float,
-            }
-        )
-
         errors = {}
-        if user_input is not None:
-            try:
-                # Create the collector object with the given long. and lat.
-                self.collector = Collector(
-                    user_input[CONF_LATITUDE],
-                    user_input[CONF_LONGITUDE],
-                )
+        try:
+            # Pull location from zone.home — no lat/lon form shown to the user
+            lat, lon = _get_home_zone_coords(self.hass)
 
-                # Save the user input into self.data so it's retained
-                self.data = user_input
+            self.collector = Collector(lat, lon, hass=self.hass)
 
-                # Check if location is valid
-                await self.collector.get_locations_data()
-                if self.collector.locations_data is None:
-                    _LOGGER.debug(f"Unsupported Lat/Lon")
-                    errors["base"] = "bad_location"
-                else:
-                    # Populate observations and daily forecasts data
-                    await self.collector.async_update()
+            # Store lat/lon in data so __init__.py can read them on first setup
+            self.data = {
+                CONF_LATITUDE: lat,
+                CONF_LONGITUDE: lon,
+            }
 
-                    # Move onto the next step of the config flow
-                    return await self.async_step_weather_name()
+            # Check if location is valid
+            await self.collector.get_locations_data()
+            if self.collector.locations_data is None:
+                _LOGGER.debug("Unsupported location from zone.home")
+                errors["base"] = "bad_location"
+            else:
+                # Populate observations and daily forecasts data
+                await self.collector.async_update()
 
-            except Exception:
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
+                # Move onto the next step of the config flow
+                return await self.async_step_weather_name()
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
-        return self.async_show_form(
-            step_id="user", data_schema=data_schema, errors=errors
-        )
+        except Exception:
+            _LOGGER.exception("Unexpected exception")
+            errors["base"] = "unknown"
+
+        # Only shown if something went wrong
+        return self.async_show_form(step_id="user", errors=errors)
 
     async def async_step_weather_name(self, user_input=None):
         """Handle the locations step."""
@@ -97,9 +102,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             try:
-                # Save the user input into self.data so it's retained
                 self.data.update(user_input)
-
                 return await self.async_step_sensors_create()
 
             except CannotConnect:
@@ -108,7 +111,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="weather_name", data_schema=data_schema, errors=errors
         )
@@ -126,10 +128,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             try:
-                # Save the user input into self.data so it's retained
                 self.data.update(user_input)
 
-                # Move onto the next step of the config flow
                 if self.data[CONF_OBSERVATIONS_CREATE]:
                     return await self.async_step_observations_monitored()
                 elif self.data[CONF_FORECASTS_CREATE]:
@@ -148,7 +148,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="sensors_create", data_schema=data_schema, errors=errors
         )
@@ -174,7 +173,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 self.data.update(user_input)
 
-                # Move onto the next step of the config flow
                 if self.data[CONF_FORECASTS_CREATE]:
                     return await self.async_step_forecasts_monitored()
                 elif self.data[CONF_WARNINGS_CREATE]:
@@ -191,7 +189,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="observations_monitored", data_schema=data_schema, errors=errors
         )
@@ -232,13 +229,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="forecasts_monitored", data_schema=data_schema, errors=errors
         )
 
     async def async_step_warnings_basename(self, user_input=None):
-        """Handle the forecasts monitored step."""
+        """Handle the warnings basename step."""
         data_schema = vol.Schema(
             {
                 vol.Required(
@@ -261,7 +257,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="warnings_basename", data_schema=data_schema, errors=errors
         )
@@ -277,61 +272,35 @@ class BomOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         """Handle the initial step."""
-        data_schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_LATITUDE,
-                    default=self.config_entry.options.get(
-                        CONF_LATITUDE,
-                        self.config_entry.data.get(
-                            CONF_LATITUDE, self.hass.config.latitude
-                        ),
-                    ),
-                ): float,
-                vol.Required(
-                    CONF_LONGITUDE,
-                    default=self.config_entry.options.get(
-                        CONF_LONGITUDE,
-                        self.config_entry.data.get(
-                            CONF_LONGITUDE, self.hass.config.longitude
-                        ),
-                    ),
-                ): float,
-            }
-        )
-
         errors = {}
-        if user_input is not None:
-            try:
-                # Create the collector object with the given long. and lat.
-                self.collector = Collector(
-                    user_input[CONF_LATITUDE],
-                    user_input[CONF_LONGITUDE],
-                )
+        try:
+            # Pull location from zone.home — no lat/lon form shown to the user
+            lat, lon = _get_home_zone_coords(self.hass)
 
-                # Save the user input into self.data so it's retained
-                self.data = user_input
+            self.collector = Collector(lat, lon, hass=self.hass)
 
-                # Check if location is valid
-                await self.collector.get_locations_data()
-                if self.collector.locations_data is None:
-                    _LOGGER.debug(f"Unsupported Lat/Lon")
-                    errors["base"] = "bad_location"
-                else:
-                    # Populate observations and daily forecasts data
-                    await self.collector.async_update()
+            self.data = {
+                CONF_LATITUDE: lat,
+                CONF_LONGITUDE: lon,
+            }
 
-                    # Move onto the next step of the config flow
-                    return await self.async_step_weather_name()
+            # Check if location is valid
+            await self.collector.get_locations_data()
+            if self.collector.locations_data is None:
+                _LOGGER.debug("Unsupported location from zone.home")
+                errors["base"] = "bad_location"
+            else:
+                # Populate observations and daily forecasts data
+                await self.collector.async_update()
 
-            except Exception:
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
+                return await self.async_step_weather_name()
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
-        return self.async_show_form(
-            step_id="init", data_schema=data_schema, errors=errors
-        )
+        except Exception:
+            _LOGGER.exception("Unexpected exception")
+            errors["base"] = "unknown"
+
+        # Only shown if something went wrong
+        return self.async_show_form(step_id="init", errors=errors)
 
     async def async_step_weather_name(self, user_input=None):
         """Handle the locations step."""
@@ -353,9 +322,7 @@ class BomOptionsFlow(config_entries.OptionsFlow):
         errors = {}
         if user_input is not None:
             try:
-                # Save the user input into self.data so it's retained
                 self.data.update(user_input)
-
                 return await self.async_step_sensors_create()
 
             except CannotConnect:
@@ -364,7 +331,6 @@ class BomOptionsFlow(config_entries.OptionsFlow):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="weather_name", data_schema=data_schema, errors=errors
         )
@@ -400,10 +366,8 @@ class BomOptionsFlow(config_entries.OptionsFlow):
         errors = {}
         if user_input is not None:
             try:
-                # Save the user input into self.data so it's retained
                 self.data.update(user_input)
 
-                # Move onto the next step of the config flow
                 if self.data[CONF_OBSERVATIONS_CREATE]:
                     return await self.async_step_observations_monitored()
                 elif self.data[CONF_FORECASTS_CREATE]:
@@ -422,7 +386,6 @@ class BomOptionsFlow(config_entries.OptionsFlow):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="sensors_create", data_schema=data_schema, errors=errors
         )
@@ -460,7 +423,6 @@ class BomOptionsFlow(config_entries.OptionsFlow):
             try:
                 self.data.update(user_input)
 
-                # Move onto the next step of the config flow
                 if self.data[CONF_FORECASTS_CREATE]:
                     return await self.async_step_forecasts_monitored()
                 elif self.data[CONF_WARNINGS_CREATE]:
@@ -477,7 +439,6 @@ class BomOptionsFlow(config_entries.OptionsFlow):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="observations_monitored", data_schema=data_schema, errors=errors
         )
@@ -534,13 +495,12 @@ class BomOptionsFlow(config_entries.OptionsFlow):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="forecasts_monitored", data_schema=data_schema, errors=errors
         )
 
     async def async_step_warnings_basename(self, user_input=None):
-        """Handle the forecasts monitored step."""
+        """Handle the warnings basename step."""
         data_schema = vol.Schema(
             {
                 vol.Required(
@@ -569,7 +529,6 @@ class BomOptionsFlow(config_entries.OptionsFlow):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
-        # If there is no user input or there were errors, show the form again, including any errors that were found with the input.
         return self.async_show_form(
             step_id="warnings_basename", data_schema=data_schema, errors=errors
         )
