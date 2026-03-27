@@ -1,8 +1,8 @@
 # Clever Caravan Weather Custom Component
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
-[![GitHub Release][releases-shield]][releases]
-[![License][license-shield]](LICENSE.md)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
+[![GitHub Release](https://img.shields.io/github/release/sambarlick/bureau_of_meteorology.svg?style=for-the-badge)](https://github.com/sambarlick/bureau_of_meteorology/releases)
+[![License](https://img.shields.io/github/license/sambarlick/bureau_of_meteorology.svg?style=for-the-badge)](LICENSE)
 ![Maintenance](https://img.shields.io/maintenance/yes/2025?style=for-the-badge)
 
 A Home Assistant custom integration that provides Australian weather data from the Bureau of Meteorology (BOM), adapted for travellers and caravan enthusiasts who move around Australia.
