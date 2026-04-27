@@ -86,11 +86,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_OBSERVATIONS_CREATE: True,
                 CONF_OBSERVATIONS_BASENAME: DEFAULT_BASENAME,
                 CONF_OBSERVATIONS_MONITORED: [
-                    s.key for s in OBSERVATION_SENSOR_TYPES
+                    "temp",
+                    "humidity",
+                    "wind_speed_kilometre",
+                    "wind_direction",
+                    "gust_speed_kilometre",
+                    "dew_point",
                 ],
                 CONF_FORECASTS_CREATE: True,
                 CONF_FORECASTS_BASENAME: DEFAULT_BASENAME,
-                CONF_FORECASTS_MONITORED: [s.key for s in FORECAST_SENSOR_TYPES],
+                CONF_FORECASTS_MONITORED: ["short_text"],
                 CONF_FORECASTS_DAYS: DEFAULT_FORECAST_DAYS,
                 CONF_WARNINGS_CREATE: True,
                 CONF_WARNINGS_BASENAME: DEFAULT_BASENAME,
