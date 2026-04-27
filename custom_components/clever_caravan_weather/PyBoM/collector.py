@@ -22,11 +22,18 @@ MAX_RETRIES = 3
 RETRY_DELAY_BASE = 2  # seconds
 MAX_CACHE_AGE = 86400  # 24 hours in seconds
 
+
 class Collector:
     """Collector for PyBoM."""
 
-    def __init__(self, latitude, longitude):
-        """Init collector."""
+    def __init__(self, latitude, longitude, hass=None):
+        """Init collector.
+
+        latitude/longitude are used as the *initial* location. When `hass`
+        is provided the collector will re-read `zone.home` on each update
+        cycle and follow the user's caravan as it moves.
+        """
+        self.hass = hass
         self.locations_data = None
         self.observations_data = None
         self.daily_forecasts_data = None
@@ -42,6 +49,45 @@ class Collector:
             "hourly_forecasts": {"data": None, "timestamp": 0},
             "warnings": {"data": None, "timestamp": 0},
         }
+
+    def _get_home_zone_coords(self):
+        """Read current latitude/longitude from zone.home with HA core fallback."""
+        if self.hass is None:
+            return None, None
+        home_zone = self.hass.states.get("zone.home")
+        if home_zone is not None:
+            lat = home_zone.attributes.get("latitude")
+            lon = home_zone.attributes.get("longitude")
+            if lat is not None and lon is not None:
+                return lat, lon
+        _LOGGER.warning(
+            "BOM: zone.home not available, falling back to HA core location"
+        )
+        return self.hass.config.latitude, self.hass.config.longitude
+
+    def _refresh_location_if_changed(self):
+        """Recompute geohash from zone.home; invalidate locations cache if changed.
+
+        Returns True if the location moved, False otherwise.
+        """
+        if self.hass is None:
+            return False
+        lat, lon = self._get_home_zone_coords()
+        if lat is None or lon is None:
+            return False
+        new_geohash7 = geohash_encode(lat, lon)
+        if new_geohash7 != self.geohash7:
+            _LOGGER.info(
+                "BOM: Home Zone location changed (%s → %s); refreshing weather data",
+                self.geohash7,
+                new_geohash7,
+            )
+            self.geohash7 = new_geohash7
+            self.geohash6 = new_geohash7[:6]
+            # Force a re-fetch of locations and downstream data on next pass
+            self.locations_data = None
+            return True
+        return False
 
     async def _fetch_with_retry(self, session, url, cache_key):
         """Fetch data with retry mechanism and store in cache if successful."""
@@ -83,7 +129,7 @@ class Collector:
                         _LOGGER.error(f"No cached {cache_key} data available")
                         return None
         return None
-    
+
     async def get_locations_data(self):
         """Get JSON location name from BOM API endpoint."""
         headers = {"User-Agent": "MakeThisAPIOpenSource/1.0.0"}
@@ -102,7 +148,7 @@ class Collector:
         if not self.daily_forecasts_data or "data" not in self.daily_forecasts_data:
             _LOGGER.warning("No daily forecast data to format")
             return
-            
+
         days = len(self.daily_forecasts_data["data"])
         for day in range(0, days):
             d = self.daily_forecasts_data["data"][day]
@@ -132,13 +178,12 @@ class Collector:
             else:
                 d["rain_amount_range"] = f"{d['rain_amount_min']}–{d['rain_amount_max']}"
 
-
     async def format_hourly_forecast_data(self):
         """Format forecast data."""
         if not self.hourly_forecasts_data or "data" not in self.hourly_forecasts_data:
             _LOGGER.warning("No hourly forecast data to format")
             return
-            
+
         hours = len(self.hourly_forecasts_data["data"])
         for hour in range(0, hours):
             d = self.hourly_forecasts_data["data"][hour]
@@ -168,18 +213,24 @@ class Collector:
     @Throttle(datetime.timedelta(minutes=5))
     async def async_update(self):
         """Refresh the data on the collector object."""
+        # Step 1: re-read zone.home and update geohash if the caravan has moved.
+        # If the location changed, locations_data is cleared so the block
+        # below will refetch it for the new spot.
+        self._refresh_location_if_changed()
+
         headers = {"User-Agent": "MakeThisAPIOpenSource/1.0.0"}
-        
+
         try:
             async with aiohttp.ClientSession(headers=headers) as session:
-                # Get location data if not already available
+                # Get location data if not already available (or if it was
+                # invalidated by a zone.home move above)
                 if self.locations_data is None:
                     data = await self._fetch_with_retry(
                         session, URL_BASE + self.geohash7, "locations"
                     )
                     if data:
                         self.locations_data = data
-                
+
                 # Get observations data
                 data = await self._fetch_with_retry(
                     session, URL_BASE + self.geohash6 + URL_OBSERVATIONS, "observations"
@@ -220,7 +271,7 @@ class Collector:
                 )
                 if data:
                     self.warnings_data = data
-                    
+
         except Exception as err:
             _LOGGER.error(f"Unexpected error during async_update: {err}")
             # Even if we have an unexpected error, we still have our cached data
