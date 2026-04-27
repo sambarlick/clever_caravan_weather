@@ -36,6 +36,7 @@ from .const import (
     CONF_WARNINGS_CREATE,
     COORDINATOR,
     DOMAIN,
+    FORECAST_DAY_LIMITS,
     SHORT_ATTRIBUTION,
     MODEL_NAME,
     OBSERVATION_SENSOR_TYPES,
@@ -117,28 +118,34 @@ async def async_setup_entry(
             CONF_FORECASTS_MONITORED, config_entry.data.get(CONF_FORECASTS_MONITORED)
         )
 
-        for day in range(0, forecast_days + 1):
-            for forecast in forecasts_monitored:
-                if forecast in [
-                    ATTR_API_NON_NOW_LABEL,
-                    ATTR_API_NON_TEMP_NOW,
-                    ATTR_API_NOW_LATER_LABEL,
-                    ATTR_API_NOW_TEMP_LATER,
-                ]:
-                    if day == 0:
-                        new_entities.append(
-                            NowLaterSensor(
-                                hass_data,
-                                forecast_basename,
-                                forecast,
-                                [
-                                    description
-                                    for description in FORECAST_SENSOR_TYPES
-                                    if description.key == forecast
-                                ][0],
-                            )
-                        )
-                else:
+        # Outer loop is per-forecast so we can apply a per-key day cap.
+        for forecast in forecasts_monitored:
+            # Some keys (UV, fire danger) are only useful for the next day or two;
+            # FORECAST_DAY_LIMITS lets us cap them without changing the global
+            # CONF_FORECASTS_DAYS that applies to the rest.
+            max_day = FORECAST_DAY_LIMITS.get(forecast, forecast_days)
+
+            if forecast in [
+                ATTR_API_NON_NOW_LABEL,
+                ATTR_API_NON_TEMP_NOW,
+                ATTR_API_NOW_LATER_LABEL,
+                ATTR_API_NOW_TEMP_LATER,
+            ]:
+                # Now/later sensors only exist for day 0.
+                new_entities.append(
+                    NowLaterSensor(
+                        hass_data,
+                        forecast_basename,
+                        forecast,
+                        [
+                            description
+                            for description in FORECAST_SENSOR_TYPES
+                            if description.key == forecast
+                        ][0],
+                    )
+                )
+            else:
+                for day in range(0, max_day + 1):
                     new_entities.append(
                         ForecastSensor(
                             hass_data,

@@ -95,7 +95,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ],
                 CONF_FORECASTS_CREATE: True,
                 CONF_FORECASTS_BASENAME: DEFAULT_BASENAME,
-                CONF_FORECASTS_MONITORED: ["short_text"],
+                CONF_FORECASTS_MONITORED: ["short_text", "uv_category", "uv_max_index", "fire_danger"],
                 CONF_FORECASTS_DAYS: DEFAULT_FORECAST_DAYS,
                 CONF_WARNINGS_CREATE: True,
                 CONF_WARNINGS_BASENAME: DEFAULT_BASENAME,

@@ -315,3 +315,21 @@ WARNING_SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
         name="Warnings",
     ),
 )
+
+# Per-key day limits for forecast sensors. Keys listed here are capped at the
+# given number of days (inclusive of day 0). Keys not listed use the global
+# CONF_FORECASTS_DAYS value. Sensor count for a key = limit + 1.
+FORECAST_DAY_LIMITS: dict[str, int] = {
+    "uv_category": 1,    # today + tomorrow
+    "uv_max_index": 1,
+    "fire_danger": 1,
+}
+
+# Per-key day limits for forecast sensors. Keys listed here are capped at the
+# given number of days (inclusive of day 0). Keys not listed use the global
+# CONF_FORECASTS_DAYS value. Sensor count for a key = limit + 1.
+FORECAST_DAY_LIMITS: dict[str, int] = {
+    "uv_category": 1,    # today + tomorrow
+    "uv_max_index": 1,
+    "fire_danger": 1,
+}
