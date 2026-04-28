@@ -133,3 +133,10 @@ logger:
 ---
 
 *Part of the [Clever Caravan](https://github.com/sambarlick) project · Built on the work of [@bremor](https://github.com/bremor) and contributors · Data provided by the [Australian Bureau of Meteorology](http://www.bom.gov.au)*
+
+## Integrations in this repo
+
+- **Clever Caravan Weather** (`clever_caravan_weather`) — BoM weather that follows zone.home as the caravan moves.
+- **Clever Caravan Location** (`clever_caravan_location`) — caravan GPS, speed, status, and health sensors.
+
+Each is installed separately via HACS.
