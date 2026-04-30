@@ -5,6 +5,8 @@
 [![License](https://img.shields.io/github/license/sambarlick/clever_caravan_weather.svg?style=for-the-badge)](LICENSE)
 ![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=sambarlick&repository=clever_caravan_weather&category=integration)
+
 A Home Assistant integration that pulls weather data from the [Australian Bureau of Meteorology (BOM)](http://www.bom.gov.au) for your **current** Home Zone location — built for caravan travellers who move around Australia.
 
 > **This integration only supports locations within Australia.**
